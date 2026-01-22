@@ -1,0 +1,97 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Monaco;}
+{\colortbl;\red255\green255\blue255;\red242\green242\blue242;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\csgray\c95825;\csgray\c0\c85000;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww16020\viewh11220\viewkind0
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs32 \cf2 \cb3 \CocoaLigature0 (ml1) gretacappello@PHYK039051 MLforAIE_Assignment2 % python code_skeleton_V5_21Jan1500.py\
+All good\
+silhouette: 0.7508196627131227\
+cluster sizes: [4477 1813 2710]\
+Chosen K (baseline): 11\
+Best CV macro-F1 (baseline): 0.5417249800207726\
+\
+Validation Accuracy: 0.6616666666666666\
+\
+Validation Classification Report:\
+              precision    recall  f1-score   support\
+\
+           0     0.6337    0.4460    0.5235       287\
+           1     0.7004    0.8615    0.7726       917\
+           2     0.5651    0.5477    0.5563       325\
+           3     0.6129    0.3506    0.4460       271\
+\
+    accuracy                         0.6617      1800\
+   macro avg     0.6280    0.5514    0.5746      1800\
+weighted avg     0.6521    0.6617    0.6447      1800\
+\
+K=3, cov=diag, proxyF1=0.720, removed(D)=32.22%, recall_out_eval=77.78%\
+K=3, cov=full, proxyF1=0.884, removed(D)=34.46%, recall_out_eval=88.89%\
+K=4, cov=diag, proxyF1=0.720, removed(D)=30.75%, recall_out_eval=66.67%\
+K=4, cov=full, proxyF1=0.933, removed(D)=34.04%, recall_out_eval=100.00%\
+K=5, cov=diag, proxyF1=0.785, removed(D)=33.01%, recall_out_eval=88.89%\
+K=5, cov=full, proxyF1=0.933, removed(D)=34.03%, recall_out_eval=100.00%\
+\
+Selected density model: K=5, cov=full, TAU=3.5712, proxyF1=0.933\
+Recall on D_out (all): 0.8947368421052632\
+Fraction removed from D: 0.3402777777777778\
+len(is_out) = 7200\
+len(c_tr)   = 7200\
+         n_total  n_outliers  outlier_rate\
+cluster                                   \
+0           3578         928      0.259363\
+1           1443        1145      0.793486\
+2           2179         377      0.173015\
+K=3, cov=diag, proxyF1=0.871, removed(D)=31.94%, recall_out_eval=88.89%\
+K=3, cov=full, proxyF1=0.989, removed(D)=1.12%, recall_out_eval=100.00%\
+K=4, cov=diag, proxyF1=0.871, removed(D)=33.41%, recall_out_eval=77.78%\
+K=4, cov=full, proxyF1=0.989, removed(D)=1.12%, recall_out_eval=100.00%\
+K=5, cov=diag, proxyF1=0.871, removed(D)=30.78%, recall_out_eval=88.89%\
+K=5, cov=full, proxyF1=0.989, removed(D)=1.12%, recall_out_eval=100.00%\
+\
+Selected density model: K=5, cov=full, TAU=-6.9158, proxyF1=0.989\
+Recall on D_out (all): 0.9824561403508771\
+Fraction removed from D: 0.19694444444444445\
+len(is_out) = 7200\
+len(c_tr)   = 7200\
+         n_total  n_outliers  outlier_rate\
+cluster                                   \
+0           3578         684      0.191168\
+1           1443         323      0.223839\
+2           2179         411      0.188619\
+\
+Tuning ET on Din (inliers only)...\
+Fitting 5 folds for each of 40 candidates, totalling 200 fits\
+/opt/anaconda3/envs/ml1/lib/python3.11/site-packages/joblib/externals/loky/process_executor.py:782: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.\
+  warnings.warn(\
+RandomizedSearchCV done in 69s\
+Best ET params: \{'n_estimators': 400, 'min_samples_split': 4, 'min_samples_leaf': 1, 'max_features': 0.7, 'max_depth': None, 'class_weight': None\}\
+Best ET CV macro-F1: 0.7410773408375315\
+Finished tuning ET on ONLY INLIERS dataset\
+\
+ET Accuracy (CV, on Din): 0.8087\
+\
+ET Classification Report (CV, on Din):\
+              precision    recall  f1-score   support\
+\
+           0       0.81      0.62      0.70       805\
+           1       0.83      0.93      0.88      3302\
+           2       0.74      0.75      0.75       967\
+           3       0.77      0.54      0.64       708\
+\
+    accuracy                           0.81      5782\
+   macro avg       0.79      0.71      0.74      5782\
+weighted avg       0.81      0.81      0.80      5782\
+\
+Final pipeline trained on inliers-only data (tuned on Din).\
+CV macro-F1: 0.741 \'b1 0.016\
+Finished with training\
+Starting evaluation of score f1 macro outlier detections\
+Proxy Outlier F1 (binary) detector outliers: 0.9911504424778761\
+Proxy Outlier F1 (macro) detector outliers: 0.9952282399759262\
+\
+Simulated Leaderboard Scores -> Score: 79.19, ClassScore: 74.11, OutlierScore: 99.52\
+Saved submission files:\
+submission_leaderboard_SimplyTheBest.csv\
+submission_final_SimplyTheBest.csv}
