@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.base import clone
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, cross_val_predict, train_test_split, cross_val_score
@@ -33,15 +32,14 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 print("All good")
 global PLOT_DIR, FINAL_PIPELINE, OUTLIER_DETECTOR, THRESHOLD, FEATURE_COLUMNS
-global CLUSTER_SCALER, CLUSTERER, OUTLIER_THRESHOLDS, CLUSTER_CLASSIFIERS
-
+global CLUSTER_SCALER, CLUSTERER, OUTLIER_MODELS, OUTLIER_THRESHOLDS, CLASSIFIERS
 # Globals used by predict()
 PLOT_DIR = None
 FINAL_PIPELINE = None     # pipeline (scaler + classifier)
 OUTLIER_DETECTOR = None   # classifier that predicts outlier probability
 THRESHOLD = None          # threshold on detector proba to flag outlier
 FEATURE_COLUMNS = None    # keep column order used at training time
-OUTLIER_THRESHOLDS = None # optional: per-cluster thresholds (per global detector)
+
 
 def predict(X_test):
     """
@@ -53,8 +51,6 @@ def predict(X_test):
       outliers: np.ndarray of 0/1 (inlier/outlier), shape (n_samples,)
     """
     global FINAL_PIPELINE, OUTLIER_DETECTOR, THRESHOLD, FEATURE_COLUMNS
-    global CLUSTER_SCALER, CLUSTERER, OUTLIER_THRESHOLDS, CLUSTER_CLASSIFIERS
-
 
     if FINAL_PIPELINE is None or OUTLIER_DETECTOR is None or THRESHOLD is None or FEATURE_COLUMNS is None:
         raise RuntimeError("Models not initialized. Train final pipeline + outlier detector in main() before calling predict().")
@@ -67,33 +63,18 @@ def predict(X_test):
         raise ValueError(f"Missing required feature columns in test data: {missing}")
 
     X_feat = X[FEATURE_COLUMNS]
-    if OUTLIER_THRESHOLDS and CLUSTER_SCALER is not None and CLUSTERER is not None:
-            cluster_ids = CLUSTERER.predict(CLUSTER_SCALER.transform(X_feat))
-            outliers = np.zeros(len(X_feat), dtype=int)
-            for cluster_id in np.unique(cluster_ids):
-                mask = cluster_ids == cluster_id
-                tau = OUTLIER_THRESHOLDS.get(cluster_id, THRESHOLD)
-                ll = OUTLIER_DETECTOR.score_samples(X_feat[mask])
-                outliers[mask] = (ll <= tau).astype(int)
-    else:
-            ll = OUTLIER_DETECTOR.score_samples(X_feat)     # log p_theta(x)
-            outliers = (ll <= THRESHOLD).astype(int)        # tau is in log-likelihood space
+
+    # ---- Outlier prediction via density log-likelihood ----
+    # OUTLIER_DETECTOR is a Pipeline (Scaler + GMM) or any model exposing score_samples
+    ll = OUTLIER_DETECTOR.score_samples(X_feat)     # log p_theta(x)
+    outliers = (ll <= THRESHOLD).astype(int)        # tau is in log-likelihood space
 
     # ---- Class prediction (only matters for inliers) ----
-    if CLUSTER_CLASSIFIERS and CLUSTER_SCALER is not None and CLUSTERER is not None:
-            cluster_ids = CLUSTERER.predict(CLUSTER_SCALER.transform(X_feat))
-            labels = np.zeros(len(X_feat), dtype=int)
-            for cluster_id in np.unique(cluster_ids):
-                mask = cluster_ids == cluster_id
-                clf = CLUSTER_CLASSIFIERS.get(cluster_id)
-                if clf is None:
-                    labels[mask] = np.asarray(FINAL_PIPELINE.predict(X_feat[mask])).ravel().astype(int)
-                else:
-                    labels[mask] = np.asarray(clf.predict(X_feat[mask])).ravel().astype(int)
-    else:
-            labels = np.asarray(FINAL_PIPELINE.predict(X_feat)).ravel().astype(int)
+    labels = np.asarray(FINAL_PIPELINE.predict(X_feat)).ravel().astype(int)
 
-
+    # Optional: for predicted outliers, label can be arbitrary since it's ignored.
+    # Setting to 0 just avoids weird values.
+    #labels[outliers == 1] = 0
 
     return labels, outliers
 
@@ -113,7 +94,8 @@ def generate_submission(test_data):
 
 def make_EDA(X, y, X_out):
     global PLOT_DIR
-    global CLUSTER_SCALER, CLUSTERER, OUTLIER_THRESHOLDS, CLUSTER_CLASSIFIERS
+    global CLUSTER_SCALER, CLUSTERER, OUTLIER_MODELS, OUTLIER_THRESHOLDS, CLASSIFIERS
+    #Clustering
 
 
 
@@ -844,67 +826,6 @@ def proxy_outlier_f1_from_confident_inliers(density_model, tau, X_D, X_out, q_co
 
     return f1_score(y_true, y_pred), f1_score(y_true, y_pred, average="macro")
 
-
-
-def fit_cluster_outlier_thresholds(
-    density_model,
-    X_in,
-    X_out_cal,
-    cluster_scaler,
-    clusterer,
-    q_conf=0.90,
-    max_removal=0.35,
-    min_removal=0.01
-):
-    """
-    Fit per-cluster thresholds using a shared density model.
-    """
-    cluster_ids = clusterer.predict(cluster_scaler.transform(X_in))
-    out_cluster_ids = clusterer.predict(cluster_scaler.transform(X_out_cal))
-    thresholds = {}
-
-    for cluster_id in np.unique(cluster_ids):
-        X_cluster = X_in.loc[cluster_ids == cluster_id]
-        X_out_cluster = X_out_cal.loc[out_cluster_ids == cluster_id]
-
-        ll_D = density_model.score_samples(X_cluster)
-        ll_out = density_model.score_samples(X_out_cluster) if len(X_out_cluster) else np.array([])
-
-        if len(ll_out) == 0:
-            thresholds[cluster_id] = np.quantile(ll_D, 0.10)
-            continue
-
-        ll_neg = ll_D[ll_D >= np.quantile(ll_D, q_conf)]
-        grid = np.quantile(
-            np.concatenate([ll_neg, ll_out]),
-            np.linspace(0.01, 0.99, 200)
-        )
-
-        y_true = np.concatenate([
-            np.zeros(len(ll_neg), dtype=int),
-            np.ones(len(ll_out), dtype=int)
-        ])
-        ll_all = np.concatenate([ll_neg, ll_out])
-
-        best_tau_local, best_f1_local = None, -1.0
-        for tau in grid:
-            frac_removed = float(np.mean(ll_D <= tau))
-            if frac_removed > max_removal or frac_removed < min_removal:
-                continue
-
-            y_pred = (ll_all <= tau).astype(int)
-            f1 = f1_score(y_true, y_pred)
-            if f1 > best_f1_local:
-                best_f1_local, best_tau_local = f1, tau
-
-        if best_tau_local is None:
-            best_tau_local = np.quantile(ll_D, 0.10)
-
-        thresholds[cluster_id] = best_tau_local
-
-    return thresholds
-
-
 def fit_clusterer(X_df, n_clusters=3, random_state=42):
     """
     Fit scaler + clustering GMM on D (mixed).
@@ -931,7 +852,8 @@ def assign_clusters(scaler, clusterer, X_df):
 
 def main():
     global PLOT_DIR, FINAL_PIPELINE, OUTLIER_DETECTOR, THRESHOLD, FEATURE_COLUMNS
-    global CLUSTER_SCALER, CLUSTERER, OUTLIER_THRESHOLDS, CLUSTER_CLASSIFIERS, CLASSIFIERS
+    global CLUSTER_SCALER, CLUSTERER, OUTLIER_MODELS, OUTLIER_THRESHOLDS, CLASSIFIERS
+
     PLOT_DIR = "plots"
     os.makedirs(PLOT_DIR, exist_ok=True)
 
@@ -1294,20 +1216,6 @@ def main():
     X_in = X_train_full.loc[~is_out_train].reset_index(drop=True)
     y_in = y_train_full.loc[~is_out_train].reset_index(drop=True)
 
-    OUTLIER_THRESHOLDS = fit_cluster_outlier_thresholds(
-        DENSITY_MODEL,
-        X_in[FEATURE_COLUMNS],
-        X_out_cal[FEATURE_COLUMNS],
-        CLUSTER_SCALER,
-        CLUSTERER,
-        q_conf=q_conf,
-        max_removal=MAX_REMOVAL,
-        min_removal=MIN_REMOVAL
-    )
-
-
-
-
     #############################################################
     #  (e) Leaderboard Predictions [+ Bonus points]             #
     ############################################################
@@ -1346,22 +1254,6 @@ def main():
 
     FINAL_PIPELINE.fit(X_in[FEATURE_COLUMNS], y_in)
     print("Final pipeline trained on inliers-only data (tuned on Din).")
-
-    CLUSTER_CLASSIFIERS = {}
-    cluster_ids_in = CLUSTERER.predict(CLUSTER_SCALER.transform(X_in[FEATURE_COLUMNS]))
-    min_cluster_samples = 200
-    for cluster_id in np.unique(cluster_ids_in):
-        mask = cluster_ids_in == cluster_id
-        if mask.sum() < min_cluster_samples:
-            print(f"Skipping cluster {cluster_id}: only {mask.sum()} samples")
-            continue
-        cluster_clf = clone(best_et_in)
-        cluster_clf.fit(X_in.loc[mask, FEATURE_COLUMNS], y_in.loc[mask])
-        CLUSTER_CLASSIFIERS[cluster_id] = cluster_clf
-
-    if not CLUSTER_CLASSIFIERS:
-        CLUSTER_CLASSIFIERS = None
-
 
     scores = cross_val_score(FINAL_PIPELINE, X_in[FEATURE_COLUMNS], y_in, scoring="f1_macro", cv=cv)
     f1_macro_mean = scores.mean()
